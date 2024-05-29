@@ -1,0 +1,145 @@
+﻿apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  creationTimestamp: '2024-05-29T10:03:39Z'
+  generation: 6
+  managedFields:
+    - apiVersion: tekton.dev/v1beta1
+      fieldsType: FieldsV1
+      fieldsV1:
+        'f:spec':
+          .: {}
+          'f:finally': {}
+          'f:params': {}
+          'f:resources': {}
+          'f:tasks': {}
+          'f:workspaces': {}
+      manager: Mozilla
+      operation: Update
+      time: '2024-05-29T18:24:36Z'
+  name: ci-cd-pipeline
+  namespace: sn-labs-yminin
+  resourceVersion: '1415044064'
+  uid: 12cf83ef-8b98-4595-b1bd-afaed33bfe0a
+spec:
+  finally:
+    - name: deploy
+      params:
+        - name: SCRIPT
+          value: >-
+            oc create deployment $(params.app-name)
+            --image=$(params.build-image) --dry-run=client -o yaml | oc apply -f
+            -
+        - name: VERSION
+          value: '4.7'
+      taskRef:
+        kind: Task
+        name: openshift-client
+  params:
+    - default: test
+      name: app-name
+      type: string
+    - default: >-
+        image-registry.openshift-image-registry.svc:5000/sn-labs-yminin/tekton-lab:latest
+      name: build-image
+      type: string
+  tasks:
+    - name: cleanup
+      taskRef:
+        kind: Task
+        name: cleanup
+      workspaces:
+        - name: source
+          workspace: output
+    - name: git-clone
+      params:
+        - name: url
+          value: 'https://github.com/YuraMinin/ci-cd-final-project.git'
+        - name: revision
+          value: ''
+        - name: refspec
+          value: ''
+        - name: submodules
+          value: 'true'
+        - name: depth
+          value: '1'
+        - name: sslVerify
+          value: 'true'
+        - name: crtFileName
+          value: ca-bundle.crt
+        - name: subdirectory
+          value: ''
+        - name: sparseCheckoutDirectories
+          value: ''
+        - name: deleteExisting
+          value: 'true'
+        - name: httpProxy
+          value: ''
+        - name: httpsProxy
+          value: ''
+        - name: noProxy
+          value: ''
+        - name: verbose
+          value: 'true'
+        - name: gitInitImage
+          value: >-
+            gcr.io/tekton-releases/github.com/tektoncd/pipeline/cmd/git-init:v0.40.2
+        - name: userHome
+          value: /home/git
+      runAfter:
+        - cleanup
+      taskRef:
+        kind: Task
+        name: git-clone
+      workspaces:
+        - name: output
+          workspace: output
+    - name: flake8
+      params:
+        - name: image
+          value: >-
+            docker.io/alpine/flake8@sha256:bb280bf2af4a434be912f25bbcb6c79ea4d735ed3c8e259f96c405998920871f
+        - name: path
+          value: .
+        - name: requirements_file
+          value: requirements.txt
+        - name: args
+          value:
+            - '--count'
+            - '--max-complexity=10'
+            - '--max-line-length=127'
+            - '--statistics'
+      runAfter:
+        - git-clone
+      taskRef:
+        kind: Task
+        name: flake8
+      workspaces:
+        - name: source
+          workspace: output
+    - name: buildah
+      params:
+        - name: IMAGE
+          value: $(params.build-image)
+      runAfter:
+        - nose
+      taskRef:
+        kind: ClusterTask
+        name: buildah
+      workspaces:
+        - name: source
+          workspace: output
+    - name: nose
+      params:
+        - name: args
+          value: '-v'
+      runAfter:
+        - flake8
+      taskRef:
+        kind: Task
+        name: nose
+      workspaces:
+        - name: source
+          workspace: output
+  workspaces:
+    - name: output
